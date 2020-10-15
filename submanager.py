@@ -5,6 +5,22 @@ import sqlite3
 from urllib.request import urlopen
 from pathlib import Path
 
+def list_subs(db):
+    conn = sqlite3.connect(db)
+    c = conn.cursor()
+    c.execute('SELECT id FROM feeds WHERE text = "YouTube Subscriptions"')
+    parent_id = str(c.fetchone()[0])
+    c.execute('SELECT text FROM feeds WHERE parentId = ?', parent_id)
+    subs = c.fetchall()
+    conn.close()
+
+    print("\nYoutube Subscriptions")
+    print("---------------------")
+    num = 1
+    for channel in subs:
+        print(f"{num}: {channel[0]}")
+        num += 1
+
 def add_sub(url, db):
     conn = sqlite3.connect(db)
     c = conn.cursor()
@@ -59,8 +75,12 @@ db = home + '/.local/share/QuiteRss/QuiteRss/feeds.db'
 url = 'https://www.youtube.com/user/craigenegger'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-a', '--add', metavar="video/channel URL", help="add channel to feeds")
+parser.add_argument('-l', '--list', help="list YouTube channels in feeds", action='store_true')
+parser.add_argument('-a', '--add', metavar="(video/channel URL)", help="add channel to feeds")
+parser.add_argument('-r', '--remove', metavar="(video/channel URL)", help="add channel to feeds")
 args = parser.parse_args()
 
-if args.add:
+if args.list:
+    list_subs(db)
+elif args.add:
     add_sub(args.add, db)
