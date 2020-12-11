@@ -4,6 +4,8 @@ import argparse
 import sqlite3
 from urllib.request import urlopen
 from pathlib import Path
+import xml.etree.ElementTree as ET
+from requests_html import HTMLSession
 
 class QuiteDb():
     def __init__(self, db):
@@ -36,22 +38,22 @@ class QuiteDb():
         print(parent_row)
     
         try:
-            request = urlopen(url)
-            response = request.read()
+            session = HTMLSession()
+            response = session.get(url)
         except:
             print("Could not reach URL")
     
-        if 'This video is restricted' in response.decode():
+        if 'This video is restricted' in response.text:
             print("Video is restricted")
             return
     
         try:
-            channel_name = re.search('"name": "(.+)"', response.decode()).group(1)
+            channel_name = response.html.search('"name": "{}"')[0]
         except:
             print("Channel name not found")
             return
         try:
-            channel_id = re.search('"channelId" content="(.+)"', response.decode()).group(1)
+            channel_id = response.html.search('"channelId" content="{}"')[0]
         except:
             print("Channel ID not found")
             return
@@ -63,11 +65,17 @@ class QuiteDb():
         image = 'AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAQAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/EAAA/0AAAP9AAAD/cAAA/4AAAP+AAAD/gAAA/4AAAP+AAAD/QAAA/0AAAP8QAAAAAAAAAAAAAAAAAAD/YAAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA/2AAAAAAAAD/MAAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD/MAAA/1AAAP//AAD//wAA//8AAP//AAD//wAA//8QEP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA/2AAAP+AAAD//wAA//8AAP//AAD//wAA//8AAP//4OD//1BQ//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP+AAAD/gAAA//8AAP//AAD//wAA//8AAP//AAD/////////////wMD//yAg//8AAP//AAD//wAA//8AAP//AAD/gAAA/4AAAP//AAD//wAA//8AAP//AAD//wAA/////////////7Cw//8gIP//AAD//wAA//8AAP//AAD//wAA/4AAAP+AAAD//wAA//8AAP//AAD//wAA//8AAP//4OD//0BA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP+AAAD/UAAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD/YAAA/zAAAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA/zAAAAAAAAD/YAAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA//8AAP//AAD//wAA/2AAAAAAAAAAAAAAAAAAAP8QAAD/QAAA/0AAAP+AAAD/gAAA/4AAAP+AAAD/gAAA/4AAAP9AAAD/QAAA/xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//8AAP//AADAAwAAgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAEAAMADAAD//wAA//8AAA=='
         print(xml_url)
         print(html_url)
-        self.c.execute('INSERT INTO feeds (id, text, xmlUrl, htmlUrl, image, parentId, rowToParent) VALUES (?, ?, ?, ?, ?, ?, ?)', (new_id, channel_name, xml_url, html_url, image, parent_id, parent_row))
-        self.conn.commit()
-        print(f'Added "{channel_name}" to feeds')
+        self.c.execute('SELECT xmlUrl FROM feeds WHERE xmlUrl = ?', (xml_url,))
+        sub_exists = self.c.fetchone()
+        if sub_exists:
+            print(f'"{channel_name}" not added already in feeds')
+        else:
+            self.c.execute('INSERT INTO feeds (id, text, xmlUrl, htmlUrl, image, parentId, rowToParent) VALUES (?, ?, ?, ?, ?, ?, ?)', (new_id, channel_name, xml_url, html_url, image, parent_id, parent_row))
+            self.conn.commit()
+            print(f'Added "{channel_name}" to feeds')
 
     def sub_rm(self, sub):
+        # doesn't work if quiterss is open
         self.c.execute('DELETE FROM feeds WHERE text = ?', (sub,))
         if self.c.rowcount == 1:
             self.conn.commit()
@@ -85,6 +93,22 @@ class QuiteDb():
                     print(f'Deleted index: {sub} name: "{del_sub[0]}" from feeds')
             except:
                 print("Unable to find channel name/index number")
+
+    def gen_xml(self, sub_file):
+        self.c.execute('SELECT text, xmlUrl FROM feeds')
+        subs = self.c.fetchall()
+        print(subs)
+
+        #opml = ET.Element('opml', version="1.1")
+        #body = ET.SubElement(opml, 'body')
+        #outline = ET.SubElement(body, 'outline', text="YouTube Subscriptions", title="YouTube Subscriptions")
+        #outline.append((ET.fromstring('<outline text="{}" title="{}" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id={}" />'.format(channelName, channelName, channelId))))
+
+        #tree = ET.ElementTree(opml)
+        #try:
+        #    tree.write(sub_file)
+        #except Exception as e:
+        #    print("{} Could not create file \'{}\'".format(e, subFile))
             
 
 parser = argparse.ArgumentParser()
@@ -92,6 +116,7 @@ parser.add_argument('-d', '--database', metavar="feeds.db", help="specify db loc
 parser.add_argument('-l', '--list', help="list YouTube channels in feeds", action='store_true')
 parser.add_argument('-a', '--add', metavar="(video/channel URL)", help="add channel to feeds.db")
 parser.add_argument('-r', '--remove', metavar="(channel name/id)", help="remove channel from feeds.db")
+parser.add_argument('-e', '--export', metavar="(channel name/id)", help="remove channel from feeds.db")
 args = parser.parse_args()
 
 if args.database:
@@ -116,5 +141,7 @@ elif args.add:
     quite.sub_add(args.add)
 elif args.remove:
     quite.sub_rm(args.remove)
+elif args.export:
+    quite.gen_xml('subscription_manager')
 
 quite.db_close()
