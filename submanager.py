@@ -7,24 +7,22 @@ from pathlib import Path
 
 class QuiteDb():
     def __init__(self, db):
+        self.db = db
         self.conn = sqlite3.connect(db)
         self.c = self.conn.cursor()
 
-    def list_subs(self):
+    def db_close(self):
+        self.conn.close()
+
+    def sub_list(self):
         self.c.execute('SELECT id FROM feeds WHERE text = "YouTube Subscriptions"')
         parent_id = str(self.c.fetchone()[0])
         self.c.execute('SELECT text FROM feeds WHERE parentId = ?', parent_id)
         subs = self.c.fetchall()
-        self.conn.close()
+        return subs
     
-        print("\nYoutube Subscriptions")
-        print("---------------------")
-        num = 1
-        for channel in subs:
-            print(f"{num}: {channel[0]}")
-            num += 1
     
-    def add_sub(self, url):
+    def sub_add(self, url):
         self.c.execute('SELECT id FROM feeds WHERE text = "YouTube Subscriptions"')
         parent_id = int(self.c.fetchone()[0])
         print(parent_id)
@@ -67,21 +65,56 @@ class QuiteDb():
         print(html_url)
         self.c.execute('INSERT INTO feeds (id, text, xmlUrl, htmlUrl, image, parentId, rowToParent) VALUES (?, ?, ?, ?, ?, ?, ?)', (new_id, channel_name, xml_url, html_url, image, parent_id, parent_row))
         self.conn.commit()
-        self.conn.close()
         print(f'Added "{channel_name}" to feeds')
 
-home = str(Path.home())
-db = home + '/.local/share/QuiteRss/QuiteRss/feeds.db'
+    def sub_rm(self, sub):
+        self.c.execute('DELETE FROM feeds WHERE text = ?', (sub,))
+        if self.c.rowcount == 1:
+            self.conn.commit()
+            print(f'Deleted "{sub}" from feeds')
+        else:
+            try:
+                sub = int(sub)
+                if sub == 0:
+                    print("Unable to find channel name/index number")
+                else:
+                    subs = self.sub_list()
+                    del_sub = subs[sub - 1]
+                    self.c.execute('DELETE FROM feeds WHERE text = ?', del_sub)
+                    self.conn.commit()
+                    print(f'Deleted index: {sub} name: "{del_sub[0]}" from feeds')
+            except:
+                print("Unable to find channel name/index number")
+            
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-d', '--database', metavar="feeds.db", help="specify db location if not specified uses default location")
+parser.add_argument('-l', '--list', help="list YouTube channels in feeds", action='store_true')
+parser.add_argument('-a', '--add', metavar="(video/channel URL)", help="add channel to feeds.db")
+parser.add_argument('-r', '--remove', metavar="(channel name/id)", help="remove channel from feeds.db")
+args = parser.parse_args()
+
+if args.database:
+    db = args.database
+else:
+    home = str(Path.home())
+    db = home + '/.local/share/QuiteRss/QuiteRss/feeds.db'
+
 url = 'https://www.youtube.com/user/craigenegger'
 quite = QuiteDb(db)
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-l', '--list', help="list YouTube channels in feeds", action='store_true')
-parser.add_argument('-a', '--add', metavar="(video/channel URL)", help="add channel to feeds")
-parser.add_argument('-r', '--remove', metavar="(video/channel URL)", help="add channel to feeds")
-args = parser.parse_args()
-
 if args.list:
-    quite.list_subs()
+    subs = quite.sub_list()
+
+    print(f"\nYoutube Subscriptions ({db})")
+    print("---------------------")
+    num = 1
+    for channel in subs:
+        print(f"{num}: {channel[0]}")
+        num += 1
 elif args.add:
-    quite.add_sub(args.add)
+    quite.sub_add(args.add)
+elif args.remove:
+    quite.sub_rm(args.remove)
+
+quite.db_close()
