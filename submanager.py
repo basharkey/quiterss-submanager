@@ -95,20 +95,27 @@ class QuiteDb():
                 print("Unable to find channel name/index number")
 
     def gen_xml(self, sub_file):
-        self.c.execute('SELECT text, xmlUrl FROM feeds')
+        self.c.execute('SELECT id FROM feeds WHERE text = "YouTube Subscriptions"')
+        parent_id = self.c.fetchone()
+
+        self.c.execute('SELECT text, xmlUrl FROM feeds WHERE parentId = ?', parent_id)
         subs = self.c.fetchall()
         print(subs)
 
-        #opml = ET.Element('opml', version="1.1")
-        #body = ET.SubElement(opml, 'body')
-        #outline = ET.SubElement(body, 'outline', text="YouTube Subscriptions", title="YouTube Subscriptions")
-        #outline.append((ET.fromstring('<outline text="{}" title="{}" type="rss" xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id={}" />'.format(channelName, channelName, channelId))))
+        opml = ET.Element('opml', version="1.1")
+        body = ET.SubElement(opml, 'body')
+        outline = ET.SubElement(body, 'outline', text="YouTube Subscriptions", title="YouTube Subscriptions")
 
-        #tree = ET.ElementTree(opml)
-        #try:
-        #    tree.write(sub_file)
-        #except Exception as e:
-        #    print("{} Could not create file \'{}\'".format(e, subFile))
+        for sub in subs:
+            channel_name = sub[0]
+            xml_url = sub[1]
+            outline.append((ET.fromstring('<outline text="{}" title="{}" type="rss" xmlUrl="{}" />'.format(channel_name, channel_name, xml_url))))
+
+        tree = ET.ElementTree(opml)
+        try:
+            tree.write(sub_file)
+        except Exception as e:
+            print("{} Could not create file \'{}\'".format(e, subFile))
             
 
 parser = argparse.ArgumentParser()
@@ -116,7 +123,7 @@ parser.add_argument('-d', '--database', metavar="feeds.db", help="specify db loc
 parser.add_argument('-l', '--list', help="list YouTube channels in feeds", action='store_true')
 parser.add_argument('-a', '--add', metavar="(video/channel URL)", help="add channel to feeds.db")
 parser.add_argument('-r', '--remove', metavar="(channel name/id)", help="remove channel from feeds.db")
-parser.add_argument('-e', '--export', metavar="(channel name/id)", help="remove channel from feeds.db")
+parser.add_argument('-e', '--export', metavar="subscription_manager", help="export to XML file", nargs='?', const='subscription_manager')
 args = parser.parse_args()
 
 if args.database:
@@ -142,6 +149,7 @@ elif args.add:
 elif args.remove:
     quite.sub_rm(args.remove)
 elif args.export:
-    quite.gen_xml('subscription_manager')
+    print(args.export)
+    quite.gen_xml(args.export)
 
 quite.db_close()
